@@ -1,0 +1,25 @@
+Summary
+- Introduces Phase 3 scaffolding for multi-device orchestration, including inventory parsing and parallel per-device configuration application.
+
+What changed
+- nxos_config_diff_phase3.py: new module with parse_host_inventory, _run_on_hosts_parallel, phase3_apply_inventory
+- tests/test_phase3_ext_new.py: tests for inventory parsing, parallel execution, and phase3_apply_inventory
+- README.md: Phase 3 usage notes and example inventory
+
+Why
+- Enables fleet-wide configuration across multiple devices in Phase 3, setting the stage for real multi-device wiring and orchestration.
+
+Patch blocks
+- nxos_config_diff_phase3.py
+- tests/test_phase3_ext_new.py
+- README.md
+
+Testing
+- Run locally: python3 -m pytest tests/test_phase3_ext_new.py
+
+Risks and rollback
+- Scaffold only; real per-host apply logic to be wired.
+
+Next steps
+- Wire in the actual per-host apply function
+- Extend tests to cover failure scenarios and partial successes

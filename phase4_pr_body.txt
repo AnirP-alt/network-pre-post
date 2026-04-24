@@ -1,0 +1,25 @@
+Summary
+- Phase 4 adds fleet-wide logging and per-host logs to support auditing and troubleshooting of large deployments.
+
+What changed
+- nxos_config_logs.py: write_host_log and write_fleet_log
+- tests/test_phase4_ext_new.py: tests validating log creation
+- README.md: Phase 4 usage notes
+
+Why
+- Deterministic logs to support fleet operations and post-mortem analysis.
+
+Patch blocks
+- nxos_config_logs.py
+- tests/test_phase4_ext_new.py
+- README.md
+
+Testing
+- Run locally: python3 -m pytest tests/test_phase4_ext_new.py
+
+Risks and rollback
+- Minimal risk; logs deterministic.
+
+Next steps
+- Integrate logging into real workflows
+- Consider log rotation and retention
