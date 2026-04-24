@@ -674,7 +674,7 @@ def run_migration(args, host: str, user: str, password: str):
                 }
             log_path = write_host_log(host, args.log_dir, log_payload)
         if log_path:
-                logger.info(f"[{host}] Log written to {log_path}")
+            logger.info(f"[{host}] Log written to {log_path}")
 
         # Fleet-wide log (Phase 4)
         fleet_path = write_fleet_log(results, Path(args.log_dir))
