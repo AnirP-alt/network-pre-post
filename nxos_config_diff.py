@@ -183,6 +183,15 @@ def save_capture_output(output_dir: Path, host: str, phase: str, command: str, o
     filepath.write_text(output)
     return filepath
 
+def write_host_log(host: str, log_dir: Path, data: dict) -> Path:
+    if not log_dir:
+        return None  # type: ignore
+    log_dir.mkdir(parents=True, exist_ok=True)
+    ts = format_timestamp()
+    log_path = log_dir / f"{host}_{ts}_log.json"
+    log_path.write_text(json.dumps(data, indent=2))
+    return log_path
+
 def parse_host_inventory(file_path: Path) -> List[str]:
     """Parse a simple host inventory file.
     Supports lines like:
@@ -604,6 +613,26 @@ def run_migration(args, host: str, user: str, password: str):
         added, removed, unchanged = compute_diff(before_output, after_output)
         result["added_count"] = len(added)
         result["removed_count"] = len(removed)
+
+        # Phase 4: Save per-host log if requested
+        if getattr(args, 'log_dir', None):
+            log_payload = {
+                'host': host,
+                'before_config': before_output,
+                'after_config': after_output,
+                'migration_command': args.command,
+                'migration_output': result.get('error', None) if isinstance(result.get('error'), dict) else None,
+                'error': result.get('error'),
+            }
+            # Include rollback info if available
+            if 'rollback_output' in result:
+                log_payload['rollback'] = {
+                    'output': result.get('rollback_output'),
+                    'success': result.get('rollback_success')
+                }
+            log_path = write_host_log(host, args.log_dir, log_payload)
+            if log_path:
+                logger.info(f"[{host}] Log written to {log_path}")
         
         if args.output:
             if args.output.is_dir():
