@@ -166,5 +166,22 @@ MIT License
 ## Author
 
 NXOS Config Migration Tool v1.0.0# network-pre-post
-# network-pre-post
-# network-pre-post
+## Phase 3 & Phase 4 scaffolding
+## Phase 3: Multi-Device Orchestration (Scaffold)
+- Inventory parsing: parse_host_inventory(inv_json) supports JSON array of host definitions.
+- Parallel per-host orchestration: phase3_apply_inventory(inventory_json, config_text) executes config across devices in parallel.
+- Example inventory:
+```
+[
+  {"host": "rtr1", "ip": "10.0.0.1", "username": "admin", "password": "secret"},
+  {"host": "rtr2", "ip": "10.0.0.2", "username": "admin", "password": "secret"}
+]
+```
+- How to run: call phase3_apply_inventory with inventory JSON and the desired config text. Currently uses a mock worker; replace with real device calls when ready.
+- Patch blocks and tests are in the repository under nxos_config_diff_phase3.py and tests/test_phase3_ext.py.
+
+## Phase 4: Fleet Logging (Scaffold)
+- Fleet logging scaffolding with per-host logs and fleet.log.
+- Helpers: write_host_log(host, text, base_dir=None) and write_fleet_log(text, base_dir=None).
+- Example: write_host_log(host, "config applied").
+- Tests exist under tests/test_phase4_ext.py.
