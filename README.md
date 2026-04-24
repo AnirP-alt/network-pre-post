@@ -182,6 +182,33 @@ For route/BGP migrations:
 - Example: write_host_log(host, "config applied") to create logs/host_<host>.log
 - Tests scaffold available in tests/test_phase4_ext.py
 
+## Extensibility: Demo Worker
+
+- The repo includes a minimal in-repo Phase 3 worker example to illustrate how to plug in a real per-host config application function.
+- See examples/demo_worker_phase3.py for a simple worker and a register_demo_worker() helper that wires the worker into the Phase 3 orchestration via set_phase3_worker.
+- Usage example:
+  ```python
+  from nxos_config_diff_phase3 import phase3_apply_inventory, set_phase3_worker
+  from examples.demo_worker_phase3 import register_demo_worker
+  register_demo_worker()
+  inventory = '[{"host": "rtr1", "ip": "10.0.0.1"}]'
+  cfg = 'interface Gi0/1\n  no shutdown'
+-  print(phase3_apply_inventory(inventory, cfg))
+  ```python
+  # Example of using a real Netmiko-based worker
+  from nxos_config_diff_phase3 import phase3_apply_inventory, set_phase3_worker
+  from examples.real_worker_phase3_netmiko import _real_worker  # or import real_worker
+  set_phase3_worker(_real_worker)
+  inventory = '[{"host": "rtr-demo", "ip": "10.0.0.99"}]'
+  cfg = 'interface Gi0/1\n  no shutdown'
+  print(phase3_apply_inventory(inventory, cfg))
+  ```
+  
+  For a less invasive approach, you can also use the provided demo worker in examples/demo_worker_phase3.py.
+
+  The real Netmiko-based worker is included in examples/real_worker_phase3_netmiko.py. It will try to import netmiko and perform a live connection; ensure Netmiko is installed and your target devices are reachable.
+  ```
+
 ## PR readiness
 - Phase 3: branch feature/phase3-multi, commit message: Phase 3: add multi-device inventory parsing and parallel orchestration scaffolding
 - Phase 4: branch feature/phase4-logging, commit message: Phase 4: Fleet logging and per-host logs

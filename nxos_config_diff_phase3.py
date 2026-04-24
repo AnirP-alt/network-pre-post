@@ -1,5 +1,6 @@
 import json
-from typing import Any, Dict, List
+import sys
+from typing import Any, Dict, List, Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 def parse_host_inventory(inv_content: str) -> List[Dict[str, Any]]:
@@ -40,12 +41,31 @@ def apply_config_to_host(host: Dict[str, Any], config_text: str) -> Dict[str, An
         return apply_config_for_host(host, config_text)
     return {'host': host.get('host') or host.get('ip'), 'status': 'skipped', 'detail': 'no single-host apply available'}
 
+_ph3_worker: Callable[[Dict[str, Any]], Dict[str, Any]] | None = None
+
+def set_phase3_worker(worker_func: Callable[[Dict[str, Any]], Dict[str, Any]]):
+    """Public helper to inject a custom per-host worker function for Phase 3."""
+    global _ph3_worker
+    _ph3_worker = worker_func  # type: ignore
+
 def phase3_apply_inventory(inventory_json: str, config_text: str) -> List[Dict[str, Any]]:
     """
     Public entry for Phase 3 multi-device config application.
     Returns per-host results.
     """
     hosts = parse_host_inventory(inventory_json)
-    def worker(h):
-        return apply_config_to_host(h, config_text)
+    # Use an injected worker if provided; else use the default that applies config_to_host
+    if _ph3_worker is not None:
+        # Support workers that accept (host, config_text) or only (host)
+        def worker(h):
+            try:
+                return _ph3_worker(h, config_text)  # type: ignore
+            except TypeError:
+                return _ph3_worker(h)  # type: ignore
+        
+        # If the injected worker is a callable with a different signature, the above
+        # wrapper will adapt to either form.
+    else:
+        def worker(h):
+            return apply_config_to_host(h, config_text)
     return _run_on_hosts_parallel(hosts, worker)
