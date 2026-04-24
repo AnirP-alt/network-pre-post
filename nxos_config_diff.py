@@ -183,6 +183,40 @@ def save_capture_output(output_dir: Path, host: str, phase: str, command: str, o
     filepath.write_text(output)
     return filepath
 
+def parse_host_inventory(file_path: Path) -> List[str]:
+    """Parse a simple host inventory file.
+    Supports lines like:
+      host1
+      host2
+      group:host3,host4
+    Ignores empty lines and comments starting with #.
+    """
+    hosts: List[str] = []
+    if not file_path or not file_path.exists():
+        return hosts
+    for line in file_path.read_text().splitlines():
+        s = line.strip()
+        if not s or s.startswith('#'):
+            continue
+        if ':' in s:
+            _group, rest = s.split(':', 1)
+            for part in rest.split(','):
+                h = part.strip()
+                if h:
+                    hosts.append(h)
+        else:
+            hosts.append(s)
+    seen = set()
+    unique = []
+    for h in hosts:
+        if h not in seen:
+            seen.add(h)
+            unique.append(h)
+    return unique
+
+def _run_for_host(host, args, user, password):
+    # Simple wrapper for parallel execution
+    return run_migration(args, host, user, password)
 def _run_for_host(host, args, user, password):
     # Helper wrapper to simplify parallel execution per host
     return run_migration(args, host, user, password)
