@@ -161,7 +161,31 @@ For route/BGP migrations:
 
 ## License
 
-MIT License
+ MIT License
+
+## Phase 3: Multi-Device Orchestration
+- Inventory parsing: parse_host_inventory(inv_json) supports a JSON array of host definitions.
+- Parallel execution: per-host configuration in parallel via phase3_apply_inventory(inventory_json, config_text).
+- Example inventory: 
+```json
+[
+  {"host": "rtr1", "ip": "10.0.0.1", "username": "admin", "password": "secret"},
+  {"host": "rtr2", "ip": "10.0.0.2", "username": "admin", "password": "secret"}
+]
+```
+- How to run: call phase3_apply_inventory with inventory JSON and the desired config text.
+- Patch blocks are provided for reviewers to apply.
+
+## Phase 4: Fleet Logging
+- Fleet logging scaffolding with per-host logs and fleet.log
+- New helpers: write_host_log(host, text, base_dir=None) and write_fleet_log(text, base_dir=None)
+- Example: write_host_log(host, "config applied") to create logs/host_<host>.log
+- Tests scaffold available in tests/test_phase4_ext.py
+
+## PR readiness
+- Phase 3: branch feature/phase3-multi, commit message: Phase 3: add multi-device inventory parsing and parallel orchestration scaffolding
+- Phase 4: branch feature/phase4-logging, commit message: Phase 4: Fleet logging and per-host logs
+- Patches and reviewer notes are prepared for immediate review
 
 ## Author
 
