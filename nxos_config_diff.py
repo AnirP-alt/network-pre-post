@@ -183,6 +183,10 @@ def save_capture_output(output_dir: Path, host: str, phase: str, command: str, o
     filepath.write_text(output)
     return filepath
 
+def _run_for_host(host, args, user, password):
+    # Helper wrapper to simplify parallel execution per host
+    return run_migration(args, host, user, password)
+
 
 def compute_diff(before: str, after: str) -> Tuple[List[str], List[str], List[str]]:
     before_lines = [line for line in before.splitlines() if line.strip()]
@@ -611,6 +615,38 @@ def run_migration(args, host: str, user: str, password: str):
     return result
 
 
+def parse_host_inventory(file_path: Path) -> List[str]:
+    """Parse a simple host inventory file.
+    Supports lines like:
+      host1
+      host2
+      group:host3,host4
+    Ignores empty lines and comments starting with #.
+    """
+    hosts = []
+    if not file_path or not file_path.exists():
+        return hosts
+    for line in file_path.read_text().splitlines():
+        s = line.strip()
+        if not s or s.startswith('#'):
+            continue
+        if ':' in s:
+            _group, rest = s.split(':', 1)
+            for part in rest.split(','):
+                h = part.strip()
+                if h:
+                    hosts.append(h)
+        else:
+            hosts.append(s)
+    # remove duplicates while preserving order
+    seen = set()
+    unique = []
+    for h in hosts:
+        if h not in seen:
+            seen.add(h)
+            unique.append(h)
+    return unique
+
 def main():
     args = parse_args()
     # Validate capture commands early to fail fast with clear messages
@@ -634,8 +670,7 @@ def main():
     
     hosts = []
     if args.hosts_file:
-        content = args.hosts_file.read_text()
-        hosts = [h.strip() for h in content.split(args.hosts_separator) if h.strip()] if hasattr(args, 'hosts_separator') else [h.strip() for h in content.split(",") if h.strip()]
+        hosts = parse_host_inventory(args.hosts_file)
     elif args.host:
         hosts = [args.host]
     
@@ -649,7 +684,9 @@ def main():
     
     results = []
     
-    if len(hosts) == 1 or args.workers == 1:
+    # Phase 3: Multi-device support: run in parallel if more than one host or worker > 1
+    multi_mode = (len(hosts) > 1) or (getattr(args, 'workers', 1) > 1)
+    if not multi_mode:
         for host in hosts:
             attempt = 0
             last_result = None
@@ -673,21 +710,18 @@ def main():
                 attempt += 1
             
             results.append(last_result)
-    else:
-        with ThreadPoolExecutor(max_workers=args.workers) as executor:
-            future_to_host = {
-                executor.submit(run_migration, args, host, user, password): host
-                for host in hosts
-            }
-            
-            for future in as_completed(future_to_host):
-                host = future_to_host[future]
+    if multi_mode:
+        max_workers = max(1, min(getattr(args, 'workers', 4), 16))
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(_run_for_host, host, args, user, password): host for host in hosts}
+            for future in as_completed(futures):
+                host = futures[future]
                 try:
                     result = future.result()
-                    results.append(result)
                 except Exception as e:
                     logger.error(f"[{host}] Exception: {e}")
-                    results.append({"host": host, "success": False, "error": str(e)})
+                    result = {"host": host, "success": False, "error": str(e)}
+                results.append(result)
     
     if args.aggregate_summary and len(hosts) > 1:
         summary_html = generate_summary(results, format_timestamp())
