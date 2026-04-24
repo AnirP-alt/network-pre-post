@@ -192,6 +192,48 @@ def write_host_log(host: str, log_dir: Path, data: dict) -> Path:
     log_path.write_text(json.dumps(data, indent=2))
     return log_path
 
+def write_fleet_log(results: list, log_dir: Path) -> Path:
+    """Write a fleet log JSON containing per-host results."""
+    if not log_dir:
+        return None
+    log_dir.mkdir(parents=True, exist_ok=True)
+    fleet_payload = {
+        "fleet_timestamp": format_timestamp(),
+        "hosts": []
+    }
+    for r in results:
+        entry = {
+            "host": r.get("host"),
+            "status": "SUCCESS" if r.get("success") else "FAILED",
+            "added": r.get("added_count", 0),
+            "removed": r.get("removed_count", 0),
+            "error": r.get("error") if isinstance(r.get("error"), str) else r.get("error", None)
+        }
+        if r.get("rollback_output") is not None:
+            entry["rollback"] = {
+                "output": r.get("rollback_output"),
+                "success": r.get("rollback_success")
+            }
+        fleet_payload["hosts"].append(entry)
+    path = log_dir / f"fleet_log_{format_timestamp()}.json"
+    path.write_text(json.dumps(fleet_payload, indent=2))
+    return path
+def compute_exit_code(results: list, fail_if_changed: bool) -> int:
+    # 0: all good, 1: changes detected (if requested), 2: errors, 3: mixed results
+    exit_code = 0
+    any_error = any(r.get("error") for r in results)
+    if any_error:
+        exit_code = 2
+    # Change detection
+    if fail_if_changed:
+        has_changes = any(r.get("added_count", 0) > 0 or r.get("removed_count", 0) > 0 for r in results)
+        if has_changes:
+            exit_code = max(exit_code, 1)
+    # If there are partial successes and failures, prefer a non-zero exit to signal issues
+    if any(r.get("success") is False for r in results):
+        exit_code = max(exit_code, 2)
+    return exit_code
+
 def parse_host_inventory(file_path: Path) -> List[str]:
     """Parse a simple host inventory file.
     Supports lines like:
@@ -631,8 +673,13 @@ def run_migration(args, host: str, user: str, password: str):
                     'success': result.get('rollback_success')
                 }
             log_path = write_host_log(host, args.log_dir, log_payload)
-            if log_path:
+        if log_path:
                 logger.info(f"[{host}] Log written to {log_path}")
+
+        # Fleet-wide log (Phase 4)
+        fleet_path = write_fleet_log(results, Path(args.log_dir))
+        if fleet_path:
+            logger.info(f"Fleet log written to {fleet_path}")
         
         if args.output:
             if args.output.is_dir():
@@ -786,23 +833,36 @@ def main():
                     result = {"host": host, "success": False, "error": str(e)}
                 results.append(result)
     
-    if args.aggregate_summary and len(hosts) > 1:
-        summary_html = generate_summary(results, format_timestamp())
-        summary_path = args.cache_dir / f"summary_{format_timestamp()}.html" if args.cache_dir else args.output / f"summary_{format_timestamp()}.html" if args.output else Path(f"summary_{format_timestamp()}.html")
-        summary_path.parent.mkdir(parents=True, exist_ok=True)
-        summary_path.write_text(summary_html)
-        logger.info(f"Summary written to {summary_path}")
-    
-    if args.fail_if_changed:
-        has_changes = any(r.get("added_count", 0) > 0 or r.get("removed_count", 0) > 0 for r in results)
-        if has_changes:
-            logger.warning("Changes detected, exiting with non-zero code")
-            sys.exit(1)
-    
+        if args.aggregate_summary and len(hosts) > 1:
+            summary_html = generate_summary(results, format_timestamp())
+            summary_path = args.cache_dir / f"summary_{format_timestamp()}.html" if args.cache_dir else args.output / f"summary_{format_timestamp()}.html" if args.output else Path(f"summary_{format_timestamp()}.html")
+            summary_path.parent.mkdir(parents=True, exist_ok=True)
+            summary_path.write_text(summary_html)
+            logger.info(f"Summary written to {summary_path}")
+    # Phase 4: compute final exit code and write per-host logs
+    per_host_logs = []
+    if getattr(args, 'log_dir', None):
+        for r in results:
+            log_payload = {
+                'host': r.get('host'),
+                'status': 'SUCCESS' if r.get('success') else 'FAILED',
+                'added': r.get('added_count', 0),
+                'removed': r.get('removed_count', 0),
+                'error': r.get('error', None),
+                'timestamp': datetime.now().isoformat(),
+            }
+            log_path = write_host_log(r.get('host'), args.log_dir, log_payload)
+            if log_path:
+                per_host_logs.append({'host': r.get('host'), 'log_path': str(log_path)})
+
+    exit_code = compute_exit_code(results, getattr(args, 'fail_if_changed', False))
+    if exit_code != 0:
+        logger.info(f"Exiting with code {exit_code} per Phase 4 policy")
+        sys.exit(exit_code)
+
     for r in results:
         status = "SUCCESS" if r.get("success") else "FAILED"
         logger.info(f"[{r['host']}] {status}: +{r.get('added_count', 0)}/-{r.get('removed_count', 0)}")
 
-
-if __name__ == "__main__":
-    main()
+    if __name__ == "__main__":
+        main()
